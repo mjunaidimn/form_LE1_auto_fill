@@ -1,0 +1,2 @@
+Date columns (i.e. A7, A10, A11) can be tricky to handle. 
+Some 'day' values can be formated as 'month' when the column is converted to a datetime format.
