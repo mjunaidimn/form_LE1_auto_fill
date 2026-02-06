@@ -107,8 +107,8 @@ class SpreadsheetProcessor:
         df.loc[:, 'address_line_split'] = df.loc[:, 'address_line'].str.upper().apply(lambda x: SpreadsheetProcessor.split_string(x, separator=',', max_len=62))
 
         # Create new columns for split correspondence addresses
-        df.loc[:, 'A2_address_1'] = df['address_line_split'].apply(lambda x: x[0].replace('  ', ', '))
-        df.loc[:, 'A2_address_2'] = df['address_line_split'].apply(lambda x: x[1].replace('  ', ', ') if len(x) > 1 else '')
+        df.loc[:, 'A2_address_1'] = df['address_line_split'].apply(lambda x: x[0].strip().replace('  ', ', '))
+        df.loc[:, 'A2_address_2'] = df['address_line_split'].apply(lambda x: x[1].strip().replace('  ', ', ') if len(x) > 1 else '')
         
         # Extract state from the 'Correspondence address' column
         df['A2_state'] = df['A2'].apply(SpreadsheetProcessor.extract_state)
@@ -122,14 +122,45 @@ class SpreadsheetProcessor:
         # Convert to datetime
         df['A7_datetime'] = pd.to_datetime(df['A7 (Commencement Date / Incorporation Date)'], format='mixed')
 
-        # Extract day, month, year
-        df['A7_day'] = df['A7_datetime'].dt.day
-        df['A7_month'] = df['A7_datetime'].dt.month
-        df['A7_year'] = df['A7_datetime'].dt.year
+        # Extract day, month, year padded with leading zeros and spaced out
+        df['A7_day'] = df['A7_datetime'].dt.day.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A7_month'] = df['A7_datetime'].dt.month.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A7_year'] = df['A7_datetime'].dt.year.apply(lambda x: '   '.join(list(str(x).zfill(2))))
 
         # Split A10 into 'from' and 'to' dates
         df[['A10_from', 'A10_to']] = df['A10'].str.split(' hingga ', n=1, expand=True)
         df[['A11_from', 'A11_to']] = df['A11'].str.split(' hingga ', n=1, expand=True)
+
+        # Convert A10_from and A10_to to datetime
+        df['A10_from_datetime'] = pd.to_datetime(df['A10_from'], format='%d-%m-%Y')
+        df['A10_to_datetime'] = pd.to_datetime(df['A10_to'], format='%d-%m-%Y')
+
+        # Convert A11_from and A11_to to datetime
+        df['A11_from_datetime'] = pd.to_datetime(df['A11_from'], format='%d-%m-%Y')
+        df['A11_to_datetime'] = pd.to_datetime(df['A11_to'], format='%d-%m-%Y')
+
+        # Extract day, month, year for A10_from
+        df['A10_from_day'] = df['A10_from_datetime'].dt.day.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A10_from_month'] = df['A10_from_datetime'].dt.month.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A10_from_year'] = df['A10_from_datetime'].dt.year.apply(lambda x: '   '.join(list(str(x).zfill(4))))
+
+        # Extract day, month, year for A10_to
+        df['A10_to_day'] = df['A10_to_datetime'].dt.day.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A10_to_month'] = df['A10_to_datetime'].dt.month.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A10_to_year'] = df['A10_to_datetime'].dt.year.apply(lambda x: '   '.join(list(str(x).zfill(4))))
+
+        # Extract day, month, year for A11_from
+        df['A11_from_day'] = df['A11_from_datetime'].dt.day.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A11_from_month'] = df['A11_from_datetime'].dt.month.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A11_from_year'] = df['A11_from_datetime'].dt.year.apply(lambda x: '   '.join(list(str(x).zfill(4))))
+
+        # Extract day, month, year for A11_to
+        df['A11_to_day'] = df['A11_to_datetime'].dt.day.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A11_to_month'] = df['A11_to_datetime'].dt.month.apply(lambda x: '  '.join(list(str(x).zfill(2))))
+        df['A11_to_year'] = df['A11_to_datetime'].dt.year.apply(lambda x: '   '.join(list(str(x).zfill(4))))
+
+        # Ensure 4 decimal places for A14
+        df['A14'] = df['A14'].apply(lambda x: '{:.4f}'.format(x) if pd.notnull(x) else x)
 
         # Rename (remove newline characters)
         df.columns = df.columns.str.replace('\n', ' ')
@@ -137,11 +168,16 @@ class SpreadsheetProcessor:
         # Subset relevant columns only
         df = df[[
             'year_1', 'year_2', 'year_3', 'year_4',
-            'A1', 'A1_1', 'A1_2',
+            'A1_1', 'A1_2',
             'A2_address_1', 'A2_address_2', 'A2_postcode', 'A2_city', 'A2_state',
             'A3', 'A4', 'A5', 'A6',
             'A7_day', 'A7_month', 'A7_year',
-            'A8', 'A9'
+            'A8', 'A9',
+            'A10_from_day', 'A10_from_month', 'A10_from_year',
+            'A10_to_day', 'A10_to_month', 'A10_to_year',
+            'A11_from_day', 'A11_from_month', 'A11_from_year',
+            'A11_to_day', 'A11_to_month', 'A11_to_year',
+            'A12', 'A13', 'A14', 'A15', 'A16', 'A17', 'A18', 'A19', 'A20'
         ]]
 
         return df

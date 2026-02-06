@@ -40,7 +40,9 @@ class PDFGenerator:
     def create_filled_pdf(pdf_images: List[Image.Image],
                          template: FormTemplate,
                          field_data: Dict[str, any]) -> BytesIO:
+        
         """Create PDF with overlaid data"""
+        
         if not REPORTLAB_AVAILABLE:
             raise ImportError("ReportLab required")
         
@@ -49,6 +51,7 @@ class PDFGenerator:
         page_width, page_height = letter
         
         for page_idx, page_img in enumerate(pdf_images):
+            
             # Draw background image
             img_reader = ImageReader(page_img)
             img_width, img_height = page_img.size
@@ -81,8 +84,6 @@ class PDFGenerator:
                             field.x, field.y, img_height, page_height
                         )
                         
-                        # pdf_x = pdf_x * scale + x_offset
-                        # pdf_y = pdf_y * scale + y_offset
                         pdf_x = pdf_x + x_offset
                         pdf_y = pdf_y + y_offset
                         
@@ -106,7 +107,8 @@ def init_session_state():
     defaults = {
         'template': None,
         'pdf_images': None,
-        'spreadsheet_data': None,
+        'loaded_data': None,
+        'processed_data': None,
         'column_field_mapping': {}
     }
     
@@ -153,13 +155,16 @@ def render_upload_section():
         
         if data_file:
             try:
-                df = SpreadsheetProcessor.load_file(data_file)
-                df = SpreadsheetProcessor.process_file(df)
-                st.session_state.spreadsheet_data = df
-                st.success(f"✓ Loaded {len(df)} rows")
+                df_loaded = SpreadsheetProcessor.load_file(data_file)
+                st.session_state.loaded_data = df_loaded
+
+                df_processed = SpreadsheetProcessor.process_file(df_loaded)
+                st.session_state.processed_data = df_processed
+                
+                st.success(f"✓ Loaded {len(df_processed)} rows")
                 
                 with st.expander("Preview"):
-                    st.dataframe(df.head())
+                    st.dataframe(df_processed.head())
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     
@@ -183,7 +188,7 @@ def render_upload_section():
 def render_mapping_section():
     """Render mapping section"""
     template = st.session_state.get('template')
-    df = st.session_state.get('spreadsheet_data')
+    df = st.session_state.get('processed_data')
     
     if not template or df is None:
         return
@@ -255,7 +260,7 @@ def render_generation_section():
     """Render generation section"""
     template = st.session_state.get('template')
     images = st.session_state.get('pdf_images')
-    df = st.session_state.get('spreadsheet_data')
+    df = st.session_state.get('processed_data')
     mapping = st.session_state.get('column_field_mapping')
     
     if not all([template, images, df is not None, mapping]):
@@ -281,6 +286,7 @@ def generate_pdfs(template, images, df, mapping):
         progress = st.progress(0)
         pdf_files = []
         filenames = []
+        loaded_data = st.session_state.get('loaded_data')
         
         for idx, row in df.iterrows():
             field_data = {}
@@ -290,7 +296,10 @@ def generate_pdfs(template, images, df, mapping):
             
             pdf = PDFGenerator.create_filled_pdf(images, template, field_data)
             
-            name = df[ExportConfig.PDF_FILENAME_COL].iloc[idx]
+            name = loaded_data[ExportConfig.PDF_FILENAME_COL].iloc[idx]
+            # Replace special characters & replace white spaces with underscores
+            name = "".join(c for c in str(name) if c.isalnum() or c in (' ', '_')).rstrip()
+            name = name.replace(" ", "_")
             filename = f"{str(name)}.pdf"
             
             pdf_files.append(pdf)
