@@ -1,6 +1,7 @@
 """Spreadsheet Processing Module"""
 
 import pandas as pd
+import re
 from typing import Optional
 
 
@@ -17,6 +18,7 @@ class SpreadsheetProcessor:
                 return pd.read_excel(file)
         except Exception as e:
             raise ValueError(f"Error loading spreadsheet: {str(e)}")
+    
     
     @staticmethod
     def split_string(text, separator=' ', max_len=50) -> list[str]:
@@ -38,9 +40,11 @@ class SpreadsheetProcessor:
 
         return parts
     
+
     # Extract state from the 'Correspondence address' column using malaysia_states list
     @staticmethod
     def extract_state(address) -> Optional[str]:
+        """Extract state from address"""
 
         malaysia_states = [
             "JOHOR",
@@ -68,22 +72,26 @@ class SpreadsheetProcessor:
         return None
     
     @staticmethod
-    # Extract city by removing address_line_1, postcode, and state from 'Correspondence address'
-    def extract_city(row) -> Optional[str]:
-        address = row['A2']
-        address_line = row['address_line']
-        postcode = row['A2_postcode']
-        state = row['A2_state']
-        if address_line and postcode and state:
-            return address.replace(address_line, '').replace(postcode, '').replace(state, '').strip()
-        return None
+    # Extract city by removing address_line, postcode, and state from the full address
+    def extract_city(row, full_address: str, address_line: str, postcode: str, state: str) -> Optional[str]:
+        address = row[full_address]
+        address_line = row[address_line]
+        postcode = row[postcode]
+        state = row[state]
+        
+        return address.replace(address_line, '').replace(postcode, '').replace(state, '').strip()
     
+
     @staticmethod
     def process_file(df: pd.DataFrame) -> pd.DataFrame:
         """Process spreadsheet data"""
 
         # Remove leading/trailing whitespace from all column names
         df.columns = df.columns.str.strip()
+
+        ######################################
+        # PART A: BASIC PARTICULARS
+        ######################################
 
         df['year_1'] = df['Tahun Taksiran'].astype(str)[0][0]
         df['year_2'] = df['Tahun Taksiran'].astype(str)[0][1]
@@ -97,24 +105,30 @@ class SpreadsheetProcessor:
         df.loc[:, 'A1_1'] = df['employer_name_split'].apply(lambda x: x[0])
         df.loc[:, 'A1_2'] = df['employer_name_split'].apply(lambda x: x[1] if len(x) > 1 else '')
 
+        # Extract address line before the 5-digit postcode
+        df['A2_address_line'] = df['A2'].str.extract(r'^(.*?)(?=\b\d{5}\b)', expand=False).str.strip()
+
+        # Split address if exceeds 62 characters
+        df.loc[:, 'A2_address_line_split'] = df.loc[:, 'A2_address_line'].str.upper().apply(lambda x: SpreadsheetProcessor.split_string(x, separator=',', max_len=62))
+
+        # Create new columns for split addresses
+        df.loc[:, 'A2_address_1'] = df['A2_address_line_split'].apply(lambda x: x[0].strip().replace('  ', ', '))
+        df.loc[:, 'A2_address_2'] = df['A2_address_line_split'].apply(lambda x: x[1].strip().replace('  ', ', ') if len(x) > 1 else '')
+        
         # Extract 5-digit postcode
         df['A2_postcode'] = df['A2'].str.extract(r'(\b\d{5}\b)', expand=False)
 
-        # Extract address line before the 5-digit postcode
-        df['address_line'] = df['A2'].str.extract(r'^(.*?)(?=\b\d{5}\b)', expand=False).str.strip()
-
-        # Split correspondence address if exceeds 62 characters
-        df.loc[:, 'address_line_split'] = df.loc[:, 'address_line'].str.upper().apply(lambda x: SpreadsheetProcessor.split_string(x, separator=',', max_len=62))
-
-        # Create new columns for split correspondence addresses
-        df.loc[:, 'A2_address_1'] = df['address_line_split'].apply(lambda x: x[0].strip().replace('  ', ', '))
-        df.loc[:, 'A2_address_2'] = df['address_line_split'].apply(lambda x: x[1].strip().replace('  ', ', ') if len(x) > 1 else '')
-        
         # Extract state from the 'Correspondence address' column
         df['A2_state'] = df['A2'].apply(SpreadsheetProcessor.extract_state)
 
-        # Extract city from the 'Correspondence address' column
-        df['A2_city'] = df.apply(SpreadsheetProcessor.extract_city, axis=1)
+        # Extract city from the address column
+        df['A2_city'] = df.apply(lambda row: SpreadsheetProcessor.extract_city(row, 'A2', 'A2_address_line', 'A2_postcode', 'A2_state'), axis=1)
+
+        # After extracting city, shorten state names
+        df['A2_state'] = df['A2_state'].replace({
+            "WILAYAH PERSEKUTUAN": "W.P.",
+            "FEDERAL TERRITORY OF": "F.T."
+        }, regex=True)
 
         # Extract only digits from the TIN in the "A3" column
         df.loc[:, 'A3'] = df.loc[:, 'A3'].str.extract('(\d+)', expand=False)
@@ -162,6 +176,38 @@ class SpreadsheetProcessor:
         # Ensure 4 decimal places for A14
         df['A14'] = df['A14'].apply(lambda x: '{:.4f}'.format(x) if pd.notnull(x) else x)
 
+
+        ######################################
+        # PART C: PARTICULARS OF LABUAN ENTITY
+        ######################################
+
+        # Extract address line before the 5-digit postcode
+        df['C1_address_line'] = df['C1'].str.extract(r'^(.*?)(?=\b\d{5}\b)', expand=False).str.strip()
+
+        # Split address if exceeds 62 characters
+        df.loc[:, 'C1_address_line_split'] = df.loc[:, 'C1_address_line'].str.upper().apply(lambda x: SpreadsheetProcessor.split_string(x, separator=',', max_len=62))
+
+        # Create new columns for split addresses
+        df.loc[:, 'C1_address_1'] = df['C1_address_line_split'].apply(lambda x: x[0].strip().replace('  ', ', '))
+        df.loc[:, 'C1_address_2'] = df['C1_address_line_split'].apply(lambda x: x[1].strip().replace('  ', ', ') if len(x) > 1 else '')
+        
+        # Extract 5-digit postcode
+        df['C1_postcode'] = df['C1'].str.extract(r'(\b\d{5}\b)', expand=False)
+
+        # Extract state from the address column
+        df['C1_state'] = df['C1'].apply(SpreadsheetProcessor.extract_state)
+
+         # Extract city from the address column
+        df['C1_city'] = df.apply(lambda row: SpreadsheetProcessor.extract_city(row, 'C1', 'C1_address_line', 'C1_postcode', 'C1_state'), axis=1)
+
+        # After extracting city, shorten state names
+        df['C1_state'] = df['C1_state'].replace({
+            "WILAYAH PERSEKUTUAN": "W.P.",
+            "FEDERAL TERRITORY OF": "F.T."
+        }, regex=True)
+
+        df['C1_country'] = 'MALAYSIA'
+
         # Rename (remove newline characters)
         df.columns = df.columns.str.replace('\n', ' ')
 
@@ -177,7 +223,15 @@ class SpreadsheetProcessor:
             'A10_to_day', 'A10_to_month', 'A10_to_year',
             'A11_from_day', 'A11_from_month', 'A11_from_year',
             'A11_to_day', 'A11_to_month', 'A11_to_year',
-            'A12', 'A13', 'A14', 'A15', 'A16', 'A17', 'A18', 'A19', 'A20'
+            'A12', 'A13', 'A14', 'A15', 'A16', 'A17', 'A18', 'A19', 'A20',
+            'C1_address_1', 'C1_address_2', 'C1_postcode', 'C1_city', 'C1_state', 'C1_country',
+            'C2',
+            'C6a',
+            'C6b = B5',
+            'C7a', 'C7b',
+            'C8a', 'C8b',
+            'C10', 'C11', 'C12',
+            'D1', 'D2', 'D3', 'D4'
         ]]
 
         return df
